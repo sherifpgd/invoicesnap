@@ -1,0 +1,1009 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>InvoiceSnap</title>
+<meta name="description" content="Snap purchase invoices and file them to Google Drive by client and month.">
+<meta name="theme-color" content="#4f46e5">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="icon" id="favicon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = { theme: { extend: { fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] } } } };
+</script>
+<style>
+  html, body { height: 100%; }
+  body { font-family: 'Inter', system-ui, sans-serif; -webkit-tap-highlight-color: transparent; }
+  .safe-top { padding-top: env(safe-area-inset-top); }
+  .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+  .drop-active { border-color: #4f46e5 !important; background: #eef2ff !important; }
+  .fade-in { animation: fadeIn .18s ease-out; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+</style>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased">
+
+<!-- Mobile overlay -->
+<div id="overlay" class="fixed inset-0 bg-slate-900/50 z-30 hidden lg:hidden"></div>
+
+<!-- Sidebar -->
+<aside id="sidebar" class="fixed inset-y-0 left-0 z-40 w-72 bg-slate-900 text-slate-200 flex flex-col transform -translate-x-full lg:translate-x-0 transition-transform duration-200 safe-top">
+  <div class="px-5 py-5 flex items-center gap-3 border-b border-slate-800">
+    <div class="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white text-lg"><i class="fa-solid fa-receipt"></i></div>
+    <div class="min-w-0">
+      <div class="text-white font-bold text-lg leading-tight">InvoiceSnap</div>
+      <div class="text-xs text-slate-400">Invoices to Google Drive</div>
+    </div>
+    <button id="closeSidebar" class="ml-auto lg:hidden text-slate-400 hover:text-white p-2" aria-label="Close menu"><i class="fa-solid fa-xmark"></i></button>
+  </div>
+
+  <div class="px-5 py-4 border-b border-slate-800">
+    <div id="cloudStatus" class="flex items-center gap-3 rounded-lg bg-slate-800/70 px-3 py-2.5 text-sm"></div>
+  </div>
+
+  <nav id="nav" class="flex-1 overflow-y-auto px-3 py-4 space-y-1"></nav>
+
+  <div class="px-5 py-4 border-t border-slate-800 space-y-3">
+    <button id="installBtn" class="hidden w-full rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold py-2.5 transition">
+      <i class="fa-solid fa-download mr-2"></i>Install app
+    </button>
+    <div class="text-xs text-slate-500">v1.0 · Data stays on this device until uploaded</div>
+  </div>
+</aside>
+
+<!-- Main -->
+<div class="lg:pl-72 min-h-full flex flex-col">
+  <header class="lg:hidden sticky top-0 z-20 bg-white/90 backdrop-blur border-b border-slate-200 safe-top">
+    <div class="flex items-center gap-3 px-4 h-14">
+      <button id="openSidebar" class="w-10 h-10 -ml-2 rounded-lg hover:bg-slate-100 text-slate-700" aria-label="Open menu"><i class="fa-solid fa-bars"></i></button>
+      <div id="mobileTitle" class="font-semibold">Dashboard</div>
+      <div id="mobileDot" class="ml-auto w-2.5 h-2.5 rounded-full bg-slate-300"></div>
+    </div>
+  </header>
+
+  <main class="flex-1 w-full max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8 safe-bottom">
+
+    <!-- Dashboard -->
+    <section id="tab-dashboard" class="tab hidden"></section>
+
+    <!-- Data Capture -->
+    <section id="tab-capture" class="tab hidden">
+      <div class="mb-6">
+        <h1 class="text-2xl font-bold">Data Capture</h1>
+        <p class="text-slate-500 text-sm mt-1">Pick the client and invoice date, add photos or files, then upload to Google Drive.</p>
+      </div>
+
+      <div class="grid lg:grid-cols-5 gap-6">
+        <div class="lg:col-span-2 space-y-4">
+          <div class="bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
+            <div>
+              <label for="selClient" class="block text-sm font-medium mb-1.5">Client</label>
+              <select id="selClient" class="w-full rounded-lg border-slate-300 border bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"></select>
+              <div id="noClientsHint" class="hidden mt-2 text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2">
+                No clients yet. <button class="underline font-medium" data-goto="clients">Add a client</button> first.
+              </div>
+            </div>
+
+            <div>
+              <div class="block text-sm font-medium mb-1.5">Invoice date</div>
+              <div id="dateGrid" class="grid grid-cols-3 gap-2">
+                <div id="dayCol">
+                  <label for="selDay" class="block text-xs text-slate-500 mb-1">Day</label>
+                  <select id="selDay" class="w-full rounded-lg border-slate-300 border bg-white px-2 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"></select>
+                </div>
+                <div>
+                  <label for="selMonth" class="block text-xs text-slate-500 mb-1">Month</label>
+                  <select id="selMonth" class="w-full rounded-lg border-slate-300 border bg-white px-2 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"></select>
+                </div>
+                <div>
+                  <label for="selYear" class="block text-xs text-slate-500 mb-1">Year</label>
+                  <select id="selYear" class="w-full rounded-lg border-slate-300 border bg-white px-2 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"></select>
+                </div>
+              </div>
+              <p id="dayDisabledNote" class="hidden text-xs text-slate-500 mt-2"><i class="fa-regular fa-calendar mr-1"></i>Day selection is off. Files are named by month and year only.</p>
+            </div>
+
+            <div class="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2.5 text-xs text-slate-600">
+              <div class="font-medium text-slate-700 mb-1"><i class="fa-brands fa-google-drive mr-1.5 text-indigo-600"></i>Destination</div>
+              <div id="pathPreview" class="font-mono break-all"></div>
+              <div id="namePreview" class="font-mono break-all text-slate-500 mt-1"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="lg:col-span-3 space-y-4">
+          <div class="bg-white rounded-2xl border border-slate-200 p-5">
+            <div id="dropZone" class="border-2 border-dashed border-slate-300 rounded-xl px-4 py-8 text-center transition cursor-pointer" tabindex="0" role="button" aria-label="Add invoice files">
+              <div class="w-14 h-14 mx-auto rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center text-2xl mb-3"><i class="fa-solid fa-cloud-arrow-up"></i></div>
+              <div class="font-semibold">Drag and drop invoices here</div>
+              <div class="text-sm text-slate-500 mt-1">or use the buttons below. Images and PDFs.</div>
+            </div>
+            <div class="grid grid-cols-2 gap-3 mt-4">
+              <button id="btnCamera" class="rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold py-3 transition"><i class="fa-solid fa-camera mr-2"></i>Take photo</button>
+              <button id="btnChoose" class="rounded-lg bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-semibold py-3 transition"><i class="fa-solid fa-folder-open mr-2"></i>Choose files</button>
+            </div>
+            <input id="fileInput" type="file" accept="image/*,application/pdf" multiple class="hidden">
+            <input id="cameraInput" type="file" accept="image/*" capture="environment" class="hidden">
+          </div>
+
+          <div id="queueCard" class="hidden bg-white rounded-2xl border border-slate-200 p-5">
+            <div class="flex items-center justify-between mb-3">
+              <h2 class="font-semibold">Ready to upload <span id="queueCount" class="text-slate-400 font-normal"></span></h2>
+              <button id="btnClearQueue" class="text-xs text-slate-500 hover:text-red-600">Clear all</button>
+            </div>
+            <ul id="queueList" class="divide-y divide-slate-100"></ul>
+            <button id="btnUpload" class="mt-4 w-full rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold py-3 transition">
+              <i class="fa-solid fa-cloud-arrow-up mr-2"></i>Upload to Google Drive
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Clients -->
+    <section id="tab-clients" class="tab hidden"></section>
+
+    <!-- Drive Explorer -->
+    <section id="tab-drive" class="tab hidden"></section>
+
+    <!-- Settings -->
+    <section id="tab-settings" class="tab hidden"></section>
+  </main>
+</div>
+
+<!-- Modal -->
+<div id="modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-900/50">
+  <div class="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 fade-in">
+    <h3 id="modalTitle" class="text-lg font-bold"></h3>
+    <div id="modalBody" class="text-sm text-slate-600 mt-2"></div>
+    <input id="modalInput" class="hidden mt-4 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+    <div class="flex justify-end gap-2 mt-6">
+      <button id="modalCancel" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100">Cancel</button>
+      <button id="modalOk" class="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-500">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toasts -->
+<div id="toasts" class="fixed bottom-4 left-1/2 -translate-x-1/2 z-[60] space-y-2 w-[92%] max-w-sm pointer-events-none"></div>
+
+<script>
+'use strict';
+
+/* ============================== Helpers ============================== */
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const pad2 = n => String(n).padStart(2, '0');
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : 'id-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10));
+const shortId = () => Math.random().toString(36).slice(2, 6);
+const daysIn = (y, m) => new Date(y, m, 0).getDate();
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const YEARS = [2024, 2025, 2026, 2027];
+const ROOT_NAME = 'InvoiceSnap_Clients';
+const SCOPE = 'https://www.googleapis.com/auth/drive.file';
+const FOLDER_MIME = 'application/vnd.google-apps.folder';
+
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { toast('Storage is full or blocked: ' + e.message, 'error'); } },
+  del(k) { try { localStorage.removeItem(k); } catch {} }
+};
+const K = { clients: 'is_clients', settings: 'is_settings', invoices: 'is_invoices', events: 'is_events', folders: 'is_folders', lastDate: 'is_lastdate', user: 'is_user' };
+
+const state = {
+  clients: store.get(K.clients, []),
+  invoices: store.get(K.invoices, []),
+  events: store.get(K.events, []),
+  settings: Object.assign({ clientId: '', disableDay: false, lockDate: false }, store.get(K.settings, {})),
+  folderCache: store.get(K.folders, {}),
+  user: store.get(K.user, null),
+  tab: 'dashboard',
+  queue: [],
+  uploading: false,
+  drive: { stack: [], items: null, loading: false, error: '' }
+};
+const save = {
+  clients: () => store.set(K.clients, state.clients),
+  invoices: () => store.set(K.invoices, state.invoices),
+  events: () => store.set(K.events, state.events.slice(0, 100)),
+  settings: () => store.set(K.settings, state.settings),
+  folders: () => store.set(K.folders, state.folderCache)
+};
+
+function safeName(s) {
+  return String(s).replace(/[\/\\:*?"<>|]/g, '-').replace(/\s+/g, ' ').trim().slice(0, 80) || 'Unnamed';
+}
+function fmtBytes(n) {
+  if (n < 1024) return n + ' B';
+  if (n < 1048576) return (n / 1024).toFixed(0) + ' KB';
+  return (n / 1048576).toFixed(1) + ' MB';
+}
+function fmtWhen(iso) {
+  const d = new Date(iso);
+  return d.toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+
+/* ============================== Toast & Modal ============================== */
+function toast(msg, type = 'info') {
+  const colors = { info: 'bg-slate-900', success: 'bg-emerald-600', error: 'bg-red-600' };
+  const el = document.createElement('div');
+  el.className = `${colors[type] || colors.info} text-white text-sm rounded-lg px-4 py-3 shadow-lg fade-in pointer-events-auto`;
+  el.textContent = msg;
+  $('#toasts').appendChild(el);
+  setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .3s'; setTimeout(() => el.remove(), 300); }, type === 'error' ? 6000 : 3000);
+}
+
+function modal({ title, body = '', input = null, okText = 'OK', danger = false, hideCancel = false }) {
+  return new Promise(resolve => {
+    const m = $('#modal'), inp = $('#modalInput'), ok = $('#modalOk'), cancel = $('#modalCancel');
+    $('#modalTitle').textContent = title;
+    $('#modalBody').innerHTML = body;
+    ok.textContent = okText;
+    ok.className = `px-4 py-2 rounded-lg text-sm font-semibold text-white ${danger ? 'bg-red-600 hover:bg-red-500' : 'bg-indigo-600 hover:bg-indigo-500'}`;
+    cancel.classList.toggle('hidden', hideCancel);
+    if (input !== null) { inp.classList.remove('hidden'); inp.value = input; } else inp.classList.add('hidden');
+    m.classList.remove('hidden'); m.classList.add('flex');
+    if (input !== null) setTimeout(() => { inp.focus(); inp.select(); }, 30);
+    const done = v => {
+      m.classList.add('hidden'); m.classList.remove('flex');
+      ok.onclick = cancel.onclick = inp.onkeydown = m.onclick = null;
+      resolve(v);
+    };
+    ok.onclick = () => done(input !== null ? inp.value : true);
+    cancel.onclick = () => done(input !== null ? null : false);
+    m.onclick = e => { if (e.target === m) done(input !== null ? null : false); };
+    inp.onkeydown = e => { if (e.key === 'Enter') ok.click(); if (e.key === 'Escape') cancel.click(); };
+  });
+}
+
+/* ============================== Navigation ============================== */
+const TABS = [
+  { id: 'dashboard', label: 'Dashboard', icon: 'fa-solid fa-gauge-high' },
+  { id: 'capture', label: 'Data Capture', icon: 'fa-solid fa-camera' },
+  { id: 'clients', label: 'Manage Clients', icon: 'fa-solid fa-users' },
+  { id: 'drive', label: 'Google Drive Explorer', icon: 'fa-brands fa-google-drive' },
+  { id: 'settings', label: 'Software Settings', icon: 'fa-solid fa-gear' }
+];
+
+function buildNav() {
+  $('#nav').innerHTML = TABS.map(t => `
+    <button data-tab="${t.id}" class="nav-item w-full flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium text-left transition">
+      <i class="${t.icon} w-5 text-center"></i><span>${t.label}</span>
+    </button>`).join('');
+  $$('#nav .nav-item').forEach(b => b.addEventListener('click', () => { showTab(b.dataset.tab); closeSidebar(); }));
+}
+
+function showTab(id) {
+  if (!TABS.some(t => t.id === id)) id = 'dashboard';
+  state.tab = id;
+  $$('.tab').forEach(s => s.classList.toggle('hidden', s.id !== 'tab-' + id));
+  $$('#nav .nav-item').forEach(b => {
+    const on = b.dataset.tab === id;
+    b.className = `nav-item w-full flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium text-left transition ${on ? 'bg-indigo-600 text-white' : 'text-slate-300 hover:bg-slate-800'}`;
+  });
+  $('#mobileTitle').textContent = TABS.find(t => t.id === id).label;
+  if (location.hash !== '#' + id) history.replaceState(null, '', '#' + id);
+  renderTab(id);
+  window.scrollTo(0, 0);
+}
+function renderTab(id) {
+  ({ dashboard: renderDashboard, capture: renderCapture, clients: renderClients, drive: renderDrive, settings: renderSettings })[id]();
+}
+function openSidebar() { $('#sidebar').classList.remove('-translate-x-full'); $('#overlay').classList.remove('hidden'); }
+function closeSidebar() { $('#sidebar').classList.add('-translate-x-full'); $('#overlay').classList.add('hidden'); }
+
+/* ============================== Google auth ============================== */
+let tokenClient = null;
+let tokenInfo = { token: null, exp: 0 };
+let gisPromise = null;
+
+function loadGIS() {
+  if (window.google && google.accounts && google.accounts.oauth2) return Promise.resolve();
+  if (gisPromise) return gisPromise;
+  gisPromise = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://accounts.google.com/gsi/client';
+    s.async = true; s.defer = true;
+    s.onload = () => resolve();
+    s.onerror = () => { gisPromise = null; reject(new Error('Could not load Google sign-in. Check your connection.')); };
+    document.head.appendChild(s);
+  });
+  return gisPromise;
+}
+
+async function initTokenClient() {
+  if (!state.settings.clientId) throw new Error('Add your Google OAuth Client ID in Software Settings first.');
+  await loadGIS();
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: state.settings.clientId.trim(),
+    scope: SCOPE,
+    callback: () => {}
+  });
+}
+
+function requestToken(prompt) {
+  return new Promise((resolve, reject) => {
+    tokenClient.callback = r => {
+      if (r.error) return reject(new Error(r.error_description || r.error));
+      tokenInfo = { token: r.access_token, exp: Date.now() + ((r.expires_in || 3600) - 60) * 1000 };
+      resolve(tokenInfo.token);
+    };
+    tokenClient.error_callback = e => reject(new Error(e && e.type === 'popup_closed' ? 'Sign-in was cancelled.' : 'Sign-in popup failed (' + ((e && e.type) || 'unknown') + '). Allow popups and try again.'));
+    tokenClient.requestAccessToken({ prompt });
+  });
+}
+
+async function connectDrive() {
+  try {
+    if (!navigator.onLine) throw new Error('You are offline.');
+    await initTokenClient();
+    await requestToken(state.user ? '' : 'consent');
+    await fetchUser();
+    updateStatus();
+    renderTab(state.tab);
+    toast('Connected to Google Drive', 'success');
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+async function ensureToken(force = false) {
+  if (!force && tokenInfo.token && Date.now() < tokenInfo.exp) return tokenInfo.token;
+  if (!tokenClient) await initTokenClient();
+  const t = await requestToken(state.user ? '' : 'consent');
+  if (!state.user) await fetchUser();
+  updateStatus();
+  return t;
+}
+
+async function fetchUser() {
+  try {
+    const r = await driveFetch('https://www.googleapis.com/drive/v3/about?fields=user(displayName,emailAddress)');
+    const j = await r.json();
+    state.user = { name: j.user.displayName, email: j.user.emailAddress };
+    store.set(K.user, state.user);
+  } catch { state.user = state.user || { name: 'Google account', email: '' }; }
+}
+
+function disconnectDrive() {
+  try { if (tokenInfo.token && window.google) google.accounts.oauth2.revoke(tokenInfo.token, () => {}); } catch {}
+  tokenInfo = { token: null, exp: 0 };
+  state.user = null; store.del(K.user);
+  state.folderCache = {}; save.folders();
+  state.drive = { stack: [], items: null, loading: false, error: '' };
+  updateStatus(); renderTab(state.tab);
+  toast('Disconnected from Google Drive');
+}
+
+function isConnected() { return !!(tokenInfo.token && Date.now() < tokenInfo.exp); }
+
+function updateStatus() {
+  let color = 'bg-slate-500', icon = 'fa-cloud', title = '', sub = '';
+  if (!state.settings.clientId) { color = 'bg-amber-500'; icon = 'fa-triangle-exclamation'; title = 'Not configured'; sub = 'Add Client ID in Settings'; }
+  else if (!navigator.onLine) { color = 'bg-slate-500'; icon = 'fa-cloud-bolt'; title = 'Offline'; sub = 'Uploads need a connection'; }
+  else if (isConnected()) { color = 'bg-emerald-500'; icon = 'fa-cloud-arrow-up'; title = 'Connected'; sub = state.user && state.user.email ? state.user.email : 'Google Drive ready'; }
+  else if (state.user) { color = 'bg-sky-500'; icon = 'fa-cloud'; title = 'Session expired'; sub = (state.user.email || 'Signed in earlier') + ' · tap to reconnect'; }
+  else { color = 'bg-slate-500'; icon = 'fa-cloud'; title = 'Signed out'; sub = 'Tap to connect Google Drive'; }
+  const el = $('#cloudStatus');
+  el.innerHTML = `<span class="w-8 h-8 rounded-full ${color} text-white flex items-center justify-center shrink-0"><i class="fa-solid ${icon} text-xs"></i></span>
+    <span class="min-w-0"><span class="block text-white font-medium leading-tight">${esc(title)}</span><span class="block text-xs text-slate-400 truncate">${esc(sub)}</span></span>`;
+  el.style.cursor = isConnected() ? 'default' : 'pointer';
+  el.onclick = () => { if (!state.settings.clientId) showTab('settings'); else if (!isConnected()) connectDrive(); };
+  $('#mobileDot').className = `ml-auto w-2.5 h-2.5 rounded-full ${color}`;
+}
+
+/* ============================== Drive API ============================== */
+async function driveFetch(url, opts = {}, retry = true) {
+  const token = tokenInfo.token || (await ensureToken());
+  const r = await fetch(url, Object.assign({}, opts, { headers: Object.assign({}, opts.headers || {}, { Authorization: 'Bearer ' + token }) }));
+  if (r.status === 401 && retry) { await ensureToken(true); return driveFetch(url, opts, false); }
+  if (!r.ok) {
+    let msg = r.statusText;
+    try { const j = await r.json(); msg = (j.error && (j.error.message || j.error.status)) || msg; } catch {}
+    const err = new Error(`Drive error ${r.status}: ${msg}`);
+    err.status = r.status;
+    throw err;
+  }
+  return r;
+}
+const qEsc = s => s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+
+async function findFolder(name, parentId) {
+  const q = `name='${qEsc(name)}' and mimeType='${FOLDER_MIME}' and '${parentId}' in parents and trashed=false`;
+  const r = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)&pageSize=1`);
+  const j = await r.json();
+  return j.files && j.files[0] ? j.files[0].id : null;
+}
+async function createFolder(name, parentId) {
+  const r = await driveFetch('https://www.googleapis.com/drive/v3/files?fields=id', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, mimeType: FOLDER_MIME, parents: [parentId] })
+  });
+  return (await r.json()).id;
+}
+async function ensureFolderPath(parts) {
+  let parent = 'root', path = '';
+  for (const part of parts) {
+    path += '/' + part;
+    let id = state.folderCache[path];
+    if (!id) {
+      id = await findFolder(part, parent);
+      if (!id) id = await createFolder(part, parent);
+      state.folderCache[path] = id; save.folders();
+    }
+    parent = id;
+  }
+  return parent;
+}
+function forgetFolderPath(parts) {
+  const p = '/' + parts.join('/');
+  Object.keys(state.folderCache).forEach(k => { if (k === p || p.startsWith(k + '/') || k.startsWith(p + '/')) delete state.folderCache[k]; });
+  save.folders();
+}
+
+async function multipartUpload(file, name, folderId) {
+  const boundary = 'isnap' + uid().replace(/-/g, '');
+  const meta = JSON.stringify({ name, parents: [folderId] });
+  const mime = file.type || 'application/octet-stream';
+  const body = new Blob([
+    `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n`,
+    `--${boundary}\r\nContent-Type: ${mime}\r\n\r\n`,
+    file,
+    `\r\n--${boundary}--`
+  ]);
+  const r = await driveFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink', {
+    method: 'POST',
+    headers: { 'Content-Type': `multipart/related; boundary=${boundary}` },
+    body
+  });
+  return r.json();
+}
+
+/* ============================== Image compression ============================== */
+async function maybeCompress(file) {
+  if (!file.type.startsWith('image/') || file.size < 3 * 1048576) return file;
+  try {
+    const bmp = await createImageBitmap(file);
+    const scale = Math.min(1, 2400 / Math.max(bmp.width, bmp.height));
+    const c = document.createElement('canvas');
+    c.width = Math.round(bmp.width * scale); c.height = Math.round(bmp.height * scale);
+    c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+    const blob = await new Promise(res => c.toBlob(res, 'image/jpeg', 0.85));
+    if (blob && blob.size < file.size) return new File([blob], file.name.replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' });
+  } catch {}
+  return file;
+}
+
+/* ============================== Capture tab ============================== */
+const dateSel = { d: 1, m: 1, y: 2026 };
+
+function todayParts() {
+  const n = new Date();
+  return { d: n.getDate(), m: n.getMonth() + 1, y: Math.min(Math.max(n.getFullYear(), YEARS[0]), YEARS[YEARS.length - 1]) };
+}
+function initDate() {
+  const saved = store.get(K.lastDate, null);
+  Object.assign(dateSel, state.settings.lockDate && saved ? saved : todayParts());
+}
+function buildDateSelects() {
+  $('#selMonth').innerHTML = MONTHS.map((m, i) => `<option value="${i + 1}">${m}</option>`).join('');
+  $('#selYear').innerHTML = YEARS.map(y => `<option value="${y}">${y}</option>`).join('');
+  syncDateSelects();
+}
+function buildDayOptions() {
+  const max = daysIn(dateSel.y, dateSel.m);
+  if (dateSel.d > max) dateSel.d = max;
+  $('#selDay').innerHTML = Array.from({ length: max }, (_, i) => `<option value="${i + 1}">${i + 1}</option>`).join('');
+}
+function syncDateSelects() {
+  buildDayOptions();
+  $('#selDay').value = dateSel.d;
+  $('#selMonth').value = dateSel.m;
+  $('#selYear').value = dateSel.y;
+  const off = state.settings.disableDay;
+  $('#dayCol').classList.toggle('hidden', off);
+  $('#dateGrid').className = `grid ${off ? 'grid-cols-2' : 'grid-cols-3'} gap-2`;
+  $('#dayDisabledNote').classList.toggle('hidden', !off);
+  updatePreview();
+}
+function monthKey() { return `${dateSel.y}-${pad2(dateSel.m)}`; }
+function datePart() { return state.settings.disableDay ? monthKey() : `${monthKey()}-${pad2(dateSel.d)}`; }
+function selectedClient() { return state.clients.find(c => c.id === $('#selClient').value) || null; }
+
+function updatePreview() {
+  const c = selectedClient();
+  $('#pathPreview').textContent = `/${ROOT_NAME}/${c ? safeName(c.name) : '[Client Name]'}/${monthKey()}/`;
+  $('#namePreview').textContent = `${datePart()}_${c ? safeName(c.name).replace(/\s/g, '-') : 'Client'}_xxxx.jpg`;
+}
+
+function renderClientSelect() {
+  const sel = $('#selClient'), prev = sel.value;
+  if (!state.clients.length) {
+    sel.innerHTML = '<option value="">No clients available</option>';
+  } else {
+    const sorted = [...state.clients].sort((a, b) => a.name.localeCompare(b.name));
+    sel.innerHTML = '<option value="">Select a client…</option>' + sorted.map(c => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
+    if (state.clients.some(c => c.id === prev)) sel.value = prev;
+    else { const last = store.get('is_lastclient', ''); if (state.clients.some(c => c.id === last)) sel.value = last; }
+  }
+  $('#noClientsHint').classList.toggle('hidden', state.clients.length > 0);
+  updatePreview();
+}
+
+function renderCapture() { renderClientSelect(); syncDateSelects(); renderQueue(); }
+
+function renderQueue() {
+  $('#queueCard').classList.toggle('hidden', !state.queue.length);
+  $('#queueCount').textContent = state.queue.length ? `(${state.queue.length})` : '';
+  $('#queueList').innerHTML = state.queue.map(q => {
+    const isImg = q.file.type.startsWith('image/');
+    const thumb = isImg ? `<img src="${q.url}" alt="" class="w-12 h-12 rounded-lg object-cover bg-slate-100">`
+      : `<div class="w-12 h-12 rounded-lg bg-red-50 text-red-500 flex items-center justify-center"><i class="fa-solid fa-file-pdf text-lg"></i></div>`;
+    const st = { pending: '', uploading: '<i class="fa-solid fa-spinner fa-spin text-indigo-600"></i>', done: '<i class="fa-solid fa-circle-check text-emerald-600"></i>', error: '<i class="fa-solid fa-circle-exclamation text-red-600"></i>' }[q.status];
+    return `<li class="py-3 flex items-center gap-3">
+      ${thumb}
+      <div class="min-w-0 flex-1">
+        <div class="text-sm font-medium truncate">${esc(q.file.name)}</div>
+        <div class="text-xs ${q.status === 'error' ? 'text-red-600' : 'text-slate-500'}">${q.status === 'error' ? esc(q.error) : fmtBytes(q.file.size)}</div>
+      </div>
+      <div class="w-6 text-center">${st}</div>
+      <button data-remove="${q.id}" class="w-8 h-8 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 ${state.uploading ? 'hidden' : ''}" aria-label="Remove"><i class="fa-solid fa-xmark"></i></button>
+    </li>`;
+  }).join('');
+}
+
+function addFiles(list) {
+  let rejected = 0;
+  Array.from(list).forEach(f => {
+    const ok = f.type.startsWith('image/') || f.type === 'application/pdf' || /\.(pdf|jpe?g|png|webp|heic|heif)$/i.test(f.name);
+    if (!ok) { rejected++; return; }
+    if (f.size > 25 * 1048576) { toast(`${f.name} is larger than 25 MB and was skipped.`, 'error'); return; }
+    state.queue.push({ id: uid(), file: f, url: f.type.startsWith('image/') ? URL.createObjectURL(f) : '', status: 'pending', error: '' });
+  });
+  if (rejected) toast(`${rejected} unsupported file${rejected > 1 ? 's' : ''} skipped. Use images or PDFs.`, 'error');
+  renderQueue();
+}
+function clearQueue(onlyDone = false) {
+  state.queue = state.queue.filter(q => { const drop = !onlyDone || q.status === 'done'; if (drop && q.url) URL.revokeObjectURL(q.url); return !drop; });
+  renderQueue();
+}
+
+async function uploadAll() {
+  if (state.uploading) return;
+  const client = selectedClient();
+  if (!client) return toast('Select a client first.', 'error');
+  const items = state.queue.filter(q => q.status !== 'done');
+  if (!items.length) return toast('Add at least one file.', 'error');
+  if (!state.settings.clientId) { toast('Add your Google OAuth Client ID first.', 'error'); return showTab('settings'); }
+  if (!navigator.onLine) return toast('You are offline. Reconnect to upload.', 'error');
+
+  state.uploading = true;
+  const btn = $('#btnUpload');
+  btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Uploading…';
+  store.set('is_lastclient', client.id);
+
+  const mk = monthKey(), dp = datePart();
+  const parts = [ROOT_NAME, safeName(client.name), mk];
+  let ok = 0, fail = 0;
+
+  try { await ensureToken(); }
+  catch (e) { toast(e.message, 'error'); state.uploading = false; btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-cloud-arrow-up mr-2"></i>Upload to Google Drive'; return; }
+
+  for (const q of items) {
+    q.status = 'uploading'; q.error = ''; renderQueue();
+    try {
+      const file = await maybeCompress(q.file);
+      const ext = ((file.name.match(/\.(\w+)$/) || [])[1] || (file.type.split('/')[1] || 'bin')).toLowerCase();
+      const name = `${dp}_${safeName(client.name).replace(/\s/g, '-')}_${shortId()}.${ext}`;
+      let res;
+      try {
+        const folderId = await ensureFolderPath(parts);
+        res = await multipartUpload(file, name, folderId);
+      } catch (e) {
+        if (e.status === 404) { forgetFolderPath(parts); const folderId = await ensureFolderPath(parts); res = await multipartUpload(file, name, folderId); }
+        else throw e;
+      }
+      q.status = 'done'; ok++;
+      state.invoices.unshift({ id: uid(), clientId: client.id, clientName: client.name, date: dp, monthKey: mk, fileName: name, driveFileId: res.id, link: res.webViewLink || '', size: file.size, at: new Date().toISOString() });
+      state.events.unshift({ id: uid(), at: new Date().toISOString(), result: 'success', clientName: client.name, fileName: name, monthKey: mk, message: 'Uploaded' });
+    } catch (e) {
+      q.status = 'error'; q.error = e.message; fail++;
+      state.events.unshift({ id: uid(), at: new Date().toISOString(), result: 'failed', clientName: client.name, fileName: q.file.name, monthKey: mk, message: e.message });
+    }
+    save.invoices(); save.events(); renderQueue();
+  }
+
+  state.uploading = false;
+  btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-cloud-arrow-up mr-2"></i>Upload to Google Drive';
+  if (ok) {
+    toast(`${ok} file${ok > 1 ? 's' : ''} uploaded${fail ? `, ${fail} failed` : ''}.`, fail ? 'info' : 'success');
+    setTimeout(() => {
+      clearQueue(true);
+      if (state.settings.lockDate) store.set(K.lastDate, Object.assign({}, dateSel));
+      else { Object.assign(dateSel, todayParts()); syncDateSelects(); }
+    }, 900);
+  } else if (fail) toast('Upload failed. See the file list for details.', 'error');
+}
+
+/* ============================== Dashboard ============================== */
+function renderDashboard() {
+  const months = new Set(state.invoices.map(i => i.monthKey));
+  const perClient = {};
+  state.invoices.forEach(i => { perClient[i.clientName] = (perClient[i.clientName] || 0) + 1; });
+  const top = Object.entries(perClient).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  const maxC = top.length ? top[0][1] : 1;
+  const stat = (icon, color, label, val) => `
+    <div class="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5">
+      <div class="w-10 h-10 rounded-xl ${color} flex items-center justify-center mb-3"><i class="${icon}"></i></div>
+      <div class="text-2xl sm:text-3xl font-bold">${val}</div>
+      <div class="text-sm text-slate-500">${label}</div>
+    </div>`;
+  const events = state.events.slice(0, 10).map(e => `
+    <li class="py-3 flex items-start gap-3">
+      <span class="mt-0.5 w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${e.result === 'success' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}"><i class="fa-solid ${e.result === 'success' ? 'fa-check' : 'fa-xmark'} text-xs"></i></span>
+      <div class="min-w-0 flex-1">
+        <div class="text-sm font-medium truncate">${esc(e.fileName)}</div>
+        <div class="text-xs text-slate-500 truncate">${esc(e.clientName)} · ${esc(e.monthKey)}${e.result === 'failed' ? ' · ' + esc(e.message) : ''}</div>
+      </div>
+      <div class="text-xs text-slate-400 whitespace-nowrap">${fmtWhen(e.at)}</div>
+    </li>`).join('');
+
+  $('#tab-dashboard').innerHTML = `
+    <div class="mb-6"><h1 class="text-2xl font-bold">Dashboard</h1><p class="text-slate-500 text-sm mt-1">Overview of your invoice filing.</p></div>
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
+      ${stat('fa-solid fa-users', 'bg-indigo-50 text-indigo-600', 'Total Clients', state.clients.length)}
+      ${stat('fa-solid fa-file-invoice', 'bg-emerald-50 text-emerald-600', 'Total Invoices', state.invoices.length)}
+      ${stat('fa-regular fa-calendar-check', 'bg-amber-50 text-amber-600', 'Active Months', months.size)}
+      ${stat('fa-brands fa-google-drive', isConnected() ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500', 'Drive', isConnected() ? 'Online' : 'Offline')}
+    </div>
+    ${!state.settings.clientId ? `<div class="mb-6 rounded-2xl bg-amber-50 border border-amber-200 p-4 text-sm text-amber-800 flex gap-3">
+      <i class="fa-solid fa-triangle-exclamation mt-0.5"></i>
+      <div>Google Drive isn't set up yet. <button class="underline font-semibold" data-goto="settings">Add your OAuth Client ID</button> to start uploading.</div></div>` : ''}
+    <div class="grid lg:grid-cols-5 gap-6">
+      <div class="lg:col-span-3 bg-white rounded-2xl border border-slate-200 p-5">
+        <div class="flex items-center justify-between mb-2"><h2 class="font-semibold">Recent cloud sync history</h2>
+          ${state.events.length ? '<button id="btnClearEvents" class="text-xs text-slate-500 hover:text-red-600">Clear</button>' : ''}</div>
+        ${events ? `<ul class="divide-y divide-slate-100">${events}</ul>` : '<div class="py-10 text-center text-sm text-slate-400"><i class="fa-regular fa-clock text-2xl mb-2 block"></i>No uploads yet.</div>'}
+      </div>
+      <div class="lg:col-span-2 space-y-6">
+        <div class="bg-white rounded-2xl border border-slate-200 p-5">
+          <h2 class="font-semibold mb-3">Top clients</h2>
+          ${top.length ? top.map(([n, c]) => `
+            <div class="mb-3 last:mb-0"><div class="flex justify-between text-sm mb-1"><span class="truncate pr-2">${esc(n)}</span><span class="text-slate-500">${c}</span></div>
+            <div class="h-2 bg-slate-100 rounded-full overflow-hidden"><div class="h-full bg-indigo-500 rounded-full" style="width:${Math.max(6, (c / maxC) * 100)}%"></div></div></div>`).join('')
+            : '<div class="py-6 text-center text-sm text-slate-400">Nothing to show yet.</div>'}
+        </div>
+        <button data-goto="capture" class="w-full rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-4 transition"><i class="fa-solid fa-camera mr-2"></i>Capture an invoice</button>
+      </div>
+    </div>`;
+  const ce = $('#btnClearEvents');
+  if (ce) ce.onclick = async () => { if (await modal({ title: 'Clear sync history?', body: 'This only removes the list. Files in Drive are not touched.', okText: 'Clear', danger: true })) { state.events = []; save.events(); renderDashboard(); } };
+}
+
+/* ============================== Clients ============================== */
+function renderClients() {
+  const counts = {};
+  state.invoices.forEach(i => { counts[i.clientId] = (counts[i.clientId] || 0) + 1; });
+  const list = [...state.clients].sort((a, b) => a.name.localeCompare(b.name)).map(c => `
+    <li class="py-3 flex items-center gap-3">
+      <div class="w-10 h-10 rounded-full bg-indigo-50 text-indigo-600 font-semibold flex items-center justify-center shrink-0">${esc(c.name.trim().charAt(0).toUpperCase())}</div>
+      <div class="min-w-0 flex-1">
+        <div class="text-sm font-medium truncate">${esc(c.name)}</div>
+        <div class="text-xs text-slate-500">${counts[c.id] || 0} invoice${(counts[c.id] || 0) === 1 ? '' : 's'}</div>
+      </div>
+      <button data-edit="${esc(c.id)}" class="w-9 h-9 rounded-lg text-slate-500 hover:bg-slate-100" aria-label="Edit"><i class="fa-solid fa-pen"></i></button>
+      <button data-del="${esc(c.id)}" class="w-9 h-9 rounded-lg text-slate-500 hover:text-red-600 hover:bg-red-50" aria-label="Delete"><i class="fa-solid fa-trash"></i></button>
+    </li>`).join('');
+  $('#tab-clients').innerHTML = `
+    <div class="mb-6"><h1 class="text-2xl font-bold">Manage Clients</h1><p class="text-slate-500 text-sm mt-1">Each client gets its own folder in Google Drive.</p></div>
+    <form id="clientForm" class="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 flex flex-col sm:flex-row gap-3 mb-6">
+      <input id="clientName" maxlength="80" placeholder="Client name" class="flex-1 rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" autocomplete="off">
+      <button class="rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold px-5 py-2.5 transition"><i class="fa-solid fa-plus mr-2"></i>Add client</button>
+    </form>
+    <div class="bg-white rounded-2xl border border-slate-200 p-5">
+      <h2 class="font-semibold mb-1">Clients <span class="text-slate-400 font-normal">(${state.clients.length})</span></h2>
+      ${list ? `<ul class="divide-y divide-slate-100">${list}</ul>` : '<div class="py-10 text-center text-sm text-slate-400"><i class="fa-solid fa-user-plus text-2xl mb-2 block"></i>No clients yet. Add your first one above.</div>'}
+    </div>`;
+  $('#clientForm').onsubmit = e => {
+    e.preventDefault();
+    const name = $('#clientName').value.replace(/\s+/g, ' ').trim();
+    if (!name) return toast('Enter a client name.', 'error');
+    if (state.clients.some(c => c.name.toLowerCase() === name.toLowerCase() || safeName(c.name).toLowerCase() === safeName(name).toLowerCase())) return toast('A client with this name already exists.', 'error');
+    state.clients.push({ id: uid(), name, createdAt: new Date().toISOString() });
+    save.clients(); renderClients(); toast(`Added ${name}`, 'success');
+  };
+}
+async function editClient(id) {
+  const c = state.clients.find(x => x.id === id); if (!c) return;
+  const v = await modal({ title: 'Edit client', body: 'Renaming only affects new uploads. Files already in Drive stay in the old folder.', input: c.name, okText: 'Save' });
+  if (v === null) return;
+  const name = v.replace(/\s+/g, ' ').trim();
+  if (!name) return toast('Name cannot be empty.', 'error');
+  if (state.clients.some(x => x.id !== id && safeName(x.name).toLowerCase() === safeName(name).toLowerCase())) return toast('A client with this name already exists.', 'error');
+  c.name = name; save.clients(); renderClients(); toast('Client updated', 'success');
+}
+async function deleteClient(id) {
+  const c = state.clients.find(x => x.id === id); if (!c) return;
+  if (!await modal({ title: `Delete ${c.name}?`, body: 'The client is removed from this app. Files already uploaded to Google Drive are not deleted.', okText: 'Delete', danger: true })) return;
+  state.clients = state.clients.filter(x => x.id !== id); save.clients(); renderClients(); toast('Client deleted');
+}
+
+/* ============================== Drive Explorer ============================== */
+function connectCard(msg) {
+  return `<div class="bg-white rounded-2xl border border-slate-200 p-8 text-center">
+    <div class="w-14 h-14 mx-auto rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center text-2xl mb-3"><i class="fa-brands fa-google-drive"></i></div>
+    <div class="font-semibold">${esc(msg)}</div>
+    <button id="btnConnect" class="mt-4 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold px-5 py-2.5 transition"><i class="fa-brands fa-google mr-2"></i>${state.settings.clientId ? 'Connect Google Drive' : 'Open settings'}</button></div>`;
+}
+function renderDrive() {
+  const el = $('#tab-drive');
+  const head = `<div class="mb-6 flex items-start justify-between gap-3">
+    <div><h1 class="text-2xl font-bold">Google Drive Explorer</h1><p class="text-slate-500 text-sm mt-1">Browse the folders InvoiceSnap created in your Drive.</p></div>
+    ${isConnected() ? '<button id="btnDriveRefresh" class="rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-sm font-medium px-3 py-2"><i class="fa-solid fa-rotate mr-1.5"></i>Refresh</button>' : ''}</div>`;
+  if (!isConnected()) {
+    el.innerHTML = head + connectCard(state.user ? 'Your session expired. Reconnect to browse Drive.' : 'Connect Google Drive to browse your invoice folders.');
+    $('#btnConnect').onclick = () => state.settings.clientId ? connectDrive() : showTab('settings');
+    return;
+  }
+  const d = state.drive;
+  if (d.items === null && !d.loading && !d.error) { loadDriveFolder(); }
+  const crumbs = [{ id: null, name: ROOT_NAME }, ...d.stack.slice(1)];
+  const bc = `<div class="flex flex-wrap items-center gap-1 text-sm mb-4">
+    ${d.stack.length ? d.stack.map((s, i) => `${i ? '<i class="fa-solid fa-chevron-right text-[10px] text-slate-400"></i>' : ''}<button data-crumb="${i}" class="px-2 py-1 rounded-md ${i === d.stack.length - 1 ? 'font-semibold text-slate-900' : 'text-indigo-600 hover:bg-indigo-50'}">${i === 0 ? '<i class="fa-solid fa-house mr-1"></i>' : ''}${esc(s.name)}</button>`).join('') : ''}</div>`;
+  let body;
+  if (d.loading) body = '<div class="py-14 text-center text-slate-400"><i class="fa-solid fa-spinner fa-spin text-2xl"></i></div>';
+  else if (d.error) body = `<div class="py-10 text-center text-sm text-red-600">${esc(d.error)}</div>`;
+  else if (d.items && !d.items.length) body = `<div class="py-14 text-center text-sm text-slate-400"><i class="fa-regular fa-folder-open text-3xl mb-2 block"></i>${d.stack.length ? 'This folder is empty.' : 'No folders yet. Upload an invoice and they will appear here.'}</div>`;
+  else if (d.items) body = `<ul class="divide-y divide-slate-100">${d.items.map(f => {
+    const isF = f.mimeType === FOLDER_MIME;
+    return `<li><${isF ? `button data-open="${esc(f.id)}" data-name="${esc(f.name)}"` : `a href="${esc(f.webViewLink || '#')}" target="_blank" rel="noopener"`} class="w-full py-3 px-1 flex items-center gap-3 text-left hover:bg-slate-50 rounded-lg">
+      <span class="w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${isF ? 'bg-amber-50 text-amber-500' : f.mimeType === 'application/pdf' ? 'bg-red-50 text-red-500' : 'bg-sky-50 text-sky-500'}"><i class="fa-solid ${isF ? 'fa-folder' : f.mimeType === 'application/pdf' ? 'fa-file-pdf' : 'fa-image'}"></i></span>
+      <span class="min-w-0 flex-1"><span class="block text-sm font-medium truncate">${esc(f.name)}</span>
+      <span class="block text-xs text-slate-500">${isF ? 'Folder' : fmtBytes(+f.size || 0)} · ${fmtWhen(f.modifiedTime)}</span></span>
+      <i class="fa-solid ${isF ? 'fa-chevron-right' : 'fa-arrow-up-right-from-square'} text-xs text-slate-400"></i></${isF ? 'button' : 'a'}></li>`;
+  }).join('')}</ul>`;
+  el.innerHTML = head + `<div class="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5">${bc}${body}</div>
+    <p class="text-xs text-slate-400 mt-3">With the limited drive.file permission, InvoiceSnap only shows files and folders it created itself.</p>`;
+  const rf = $('#btnDriveRefresh'); if (rf) rf.onclick = () => { state.drive = { stack: [], items: null, loading: false, error: '' }; renderDrive(); };
+}
+async function loadDriveFolder() {
+  const d = state.drive; d.loading = true; d.error = '';
+  try {
+    if (!d.stack.length) {
+      const rootId = await findFolder(ROOT_NAME, 'root');
+      if (!rootId) { d.items = []; d.loading = false; return renderDrive(); }
+      d.stack = [{ id: rootId, name: ROOT_NAME }];
+    }
+    renderDrive();
+    const cur = d.stack[d.stack.length - 1];
+    const q = `'${cur.id}' in parents and trashed=false`;
+    const r = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name,mimeType,size,modifiedTime,webViewLink)&orderBy=folder,name&pageSize=200`);
+    d.items = (await r.json()).files || [];
+  } catch (e) { d.error = e.message; }
+  d.loading = false;
+  if (state.tab === 'drive') renderDrive();
+}
+
+/* ============================== Settings ============================== */
+function toggle(id, label, desc, on) {
+  return `<label class="flex items-start gap-4 py-4 cursor-pointer">
+    <div class="flex-1"><div class="text-sm font-medium">${label}</div><div class="text-xs text-slate-500 mt-0.5">${desc}</div></div>
+    <span class="relative inline-flex items-center shrink-0 mt-0.5">
+      <input type="checkbox" id="${id}" class="sr-only peer" ${on ? 'checked' : ''}>
+      <span class="w-11 h-6 rounded-full bg-slate-300 peer-checked:bg-indigo-600 transition peer-focus-visible:ring-2 peer-focus-visible:ring-indigo-400"></span>
+      <span class="absolute left-0.5 top-0.5 w-5 h-5 rounded-full bg-white shadow transition peer-checked:translate-x-5"></span>
+    </span></label>`;
+}
+function renderSettings() {
+  const origin = location.origin === 'null' ? '(open this page over https)' : location.origin;
+  $('#tab-settings').innerHTML = `
+    <div class="mb-6"><h1 class="text-2xl font-bold">Software Settings</h1><p class="text-slate-500 text-sm mt-1">Google connection, date behavior and data tools.</p></div>
+    <div class="space-y-6 max-w-2xl">
+      <div class="bg-white rounded-2xl border border-slate-200 p-5">
+        <h2 class="font-semibold mb-1"><i class="fa-brands fa-google mr-2 text-indigo-600"></i>Google OAuth</h2>
+        <p class="text-xs text-slate-500 mb-4">Create a Web application OAuth client in Google Cloud Console, enable the Drive API, and add this site as an authorized JavaScript origin:
+          <code class="bg-slate-100 rounded px-1.5 py-0.5 break-all">${esc(origin)}</code></p>
+        <label for="inClientId" class="block text-sm font-medium mb-1.5">Client ID</label>
+        <input id="inClientId" value="${esc(state.settings.clientId)}" placeholder="1234567890-abc123.apps.googleusercontent.com" autocomplete="off" spellcheck="false" class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        <div class="flex flex-wrap gap-2 mt-3">
+          <button id="btnSaveId" class="rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold px-4 py-2.5">Save</button>
+          ${isConnected() || state.user ? '<button id="btnDisconnect" class="rounded-lg border border-slate-300 hover:bg-slate-50 text-sm font-medium px-4 py-2.5">Disconnect</button>'
+            : '<button id="btnConnect2" class="rounded-lg border border-slate-300 hover:bg-slate-50 text-sm font-medium px-4 py-2.5">Connect now</button>'}
+        </div>
+        ${state.user ? `<p class="text-xs text-slate-500 mt-3">Signed in as <strong>${esc(state.user.email || state.user.name)}</strong></p>` : ''}
+      </div>
+
+      <div class="bg-white rounded-2xl border border-slate-200 px-5 divide-y divide-slate-100">
+        ${toggle('tgDay', 'Disable Day Selection (Month &amp; Year Only)', 'Hide the day dropdown. Files are named YYYY-MM instead of YYYY-MM-DD.', state.settings.disableDay)}
+        ${toggle('tgLock', 'Keep Date Locked After Upload', 'Keep the selected date after uploading instead of resetting to today.', state.settings.lockDate)}
+      </div>
+
+      <div class="bg-white rounded-2xl border border-slate-200 p-5">
+        <h2 class="font-semibold mb-3"><i class="fa-solid fa-database mr-2 text-indigo-600"></i>Data</h2>
+        <div class="grid sm:grid-cols-2 gap-3">
+          <button id="btnExport" class="rounded-lg border border-slate-300 hover:bg-slate-50 text-sm font-medium px-4 py-3 text-left"><i class="fa-solid fa-file-export mr-2"></i>Export JSON backup</button>
+          <button id="btnImport" class="rounded-lg border border-slate-300 hover:bg-slate-50 text-sm font-medium px-4 py-3 text-left"><i class="fa-solid fa-file-import mr-2"></i>Restore from backup</button>
+        </div>
+        <input type="file" id="importFile" accept="application/json,.json" class="hidden">
+        <p class="text-xs text-slate-500 mt-3">Backups include clients, upload history and settings. Photos are not stored in the app; they live in Google Drive.</p>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-red-200 p-5">
+        <h2 class="font-semibold text-red-700 mb-1"><i class="fa-solid fa-triangle-exclamation mr-2"></i>Danger zone</h2>
+        <p class="text-xs text-slate-500 mb-3">Erases all clients, history and settings from this device. Files in Google Drive are not affected.</p>
+        <button id="btnReset" class="rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm font-semibold px-4 py-2.5">Reset all data</button>
+      </div>
+    </div>`;
+
+  $('#btnSaveId').onclick = () => {
+    const v = $('#inClientId').value.trim();
+    if (v && !/\.apps\.googleusercontent\.com$/.test(v)) return toast('That does not look like a Google Client ID. It should end with .apps.googleusercontent.com', 'error');
+    const changed = v !== state.settings.clientId;
+    state.settings.clientId = v; save.settings();
+    if (changed) { tokenClient = null; tokenInfo = { token: null, exp: 0 }; state.user = null; store.del(K.user); state.folderCache = {}; save.folders(); }
+    updateStatus(); renderSettings(); toast('Client ID saved', 'success');
+  };
+  const c2 = $('#btnConnect2'); if (c2) c2.onclick = () => state.settings.clientId ? connectDrive() : toast('Save a Client ID first.', 'error');
+  const dc = $('#btnDisconnect'); if (dc) dc.onclick = disconnectDrive;
+  $('#tgDay').onchange = e => { state.settings.disableDay = e.target.checked; save.settings(); toast(e.target.checked ? 'Day selection disabled' : 'Day selection enabled'); };
+  $('#tgLock').onchange = e => {
+    state.settings.lockDate = e.target.checked; save.settings();
+    if (e.target.checked) store.set(K.lastDate, Object.assign({}, dateSel)); else store.del(K.lastDate);
+    toast(e.target.checked ? 'Date will stay locked after upload' : 'Date will reset after upload');
+  };
+  $('#btnExport').onclick = exportBackup;
+  $('#btnImport').onclick = () => $('#importFile').click();
+  $('#importFile').onchange = importBackup;
+  $('#btnReset').onclick = resetAll;
+}
+
+function exportBackup() {
+  const data = { app: 'InvoiceSnap', version: 1, exportedAt: new Date().toISOString(), settings: state.settings, clients: state.clients, invoices: state.invoices, events: state.events };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `invoicesnap-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  toast('Backup downloaded', 'success');
+}
+async function importBackup(e) {
+  const f = e.target.files[0]; e.target.value = '';
+  if (!f) return;
+  try {
+    const d = JSON.parse(await f.text());
+    if (d.app !== 'InvoiceSnap' || !Array.isArray(d.clients) || !Array.isArray(d.invoices)) throw new Error('Not an InvoiceSnap backup file.');
+    if (!await modal({ title: 'Restore backup?', body: `This replaces current data with ${d.clients.length} clients and ${d.invoices.length} invoices from the file.`, okText: 'Restore', danger: true })) return;
+    state.clients = d.clients; state.invoices = d.invoices; state.events = Array.isArray(d.events) ? d.events : [];
+    state.settings = Object.assign({ clientId: '', disableDay: false, lockDate: false }, d.settings || {});
+    state.folderCache = {}; save.clients(); save.invoices(); save.events(); save.settings(); save.folders();
+    tokenClient = null; tokenInfo = { token: null, exp: 0 };
+    initDate(); updateStatus(); renderTab(state.tab); toast('Backup restored', 'success');
+  } catch (err) { toast(err.message || 'Could not read the backup file.', 'error'); }
+}
+async function resetAll() {
+  if (!await modal({ title: 'Reset all data?', body: 'All clients, history and settings on this device will be erased. This cannot be undone. Consider exporting a backup first.', okText: 'Erase everything', danger: true })) return;
+  try { if (tokenInfo.token && window.google) google.accounts.oauth2.revoke(tokenInfo.token, () => {}); } catch {}
+  Object.values(K).concat(['is_lastclient']).forEach(store.del);
+  state.clients = []; state.invoices = []; state.events = []; state.folderCache = {}; state.user = null;
+  state.settings = { clientId: '', disableDay: false, lockDate: false };
+  state.drive = { stack: [], items: null, loading: false, error: '' };
+  tokenClient = null; tokenInfo = { token: null, exp: 0 };
+  clearQueue(); initDate(); buildDateSelects(); updateStatus(); renderTab(state.tab);
+  toast('All data erased');
+}
+
+/* ============================== PWA ============================== */
+function makeIcon(size, maskable) {
+  const c = document.createElement('canvas'); c.width = c.height = size;
+  const g = c.getContext('2d');
+  const grad = g.createLinearGradient(0, 0, size, size);
+  grad.addColorStop(0, '#6366f1'); grad.addColorStop(1, '#4338ca');
+  g.fillStyle = grad;
+  if (maskable) g.fillRect(0, 0, size, size);
+  else { const r = size * 0.22; g.beginPath(); g.moveTo(r, 0); g.arcTo(size, 0, size, size, r); g.arcTo(size, size, 0, size, r); g.arcTo(0, size, 0, 0, r); g.arcTo(0, 0, size, 0, r); g.closePath(); g.fill(); }
+  const s = maskable ? 0.5 : 0.58, w = size * s * 0.78, h = size * s, x = (size - w) / 2, y = (size - h) / 2;
+  g.fillStyle = '#fff'; g.beginPath();
+  const zig = h * 0.08, n = 6;
+  g.moveTo(x, y);
+  g.lineTo(x + w, y); g.lineTo(x + w, y + h);
+  for (let i = 0; i < n; i++) { g.lineTo(x + w - (w / n) * (i + 0.5), y + h - zig); g.lineTo(x + w - (w / n) * (i + 1), y + h); }
+  g.lineTo(x, y); g.closePath(); g.fill();
+  g.fillStyle = '#6366f1';
+  [0.22, 0.4, 0.58].forEach((p, i) => g.fillRect(x + w * 0.16, y + h * p, w * (i === 2 ? 0.4 : 0.68), h * 0.07));
+  return c.toDataURL('image/png');
+}
+function setupPWA() {
+  try {
+    $('#favicon').href = makeIcon(64, false);
+    if (!/^https?:$/.test(location.protocol)) return;
+    const base = location.href.split('#')[0].split('?')[0];
+    const scope = base.substring(0, base.lastIndexOf('/') + 1);
+    const manifest = {
+      name: 'InvoiceSnap', short_name: 'InvoiceSnap',
+      description: 'Snap purchase invoices and file them to Google Drive by client and month.',
+      start_url: base, scope, display: 'standalone', orientation: 'any',
+      background_color: '#f8fafc', theme_color: '#4f46e5',
+      icons: [
+        { src: makeIcon(192, false), sizes: '192x192', type: 'image/png', purpose: 'any' },
+        { src: makeIcon(512, false), sizes: '512x512', type: 'image/png', purpose: 'any' },
+        { src: makeIcon(512, true), sizes: '512x512', type: 'image/png', purpose: 'maskable' }
+      ]
+    };
+    const link = document.createElement('link');
+    link.rel = 'manifest';
+    link.href = URL.createObjectURL(new Blob([JSON.stringify(manifest)], { type: 'application/manifest+json' }));
+    document.head.appendChild(link);
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js', { scope: './' }).catch(() => {});
+  } catch (e) { console.warn('PWA setup skipped:', e); }
+}
+let deferredInstall = null;
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferredInstall = e; $('#installBtn').classList.remove('hidden'); });
+window.addEventListener('appinstalled', () => { deferredInstall = null; $('#installBtn').classList.add('hidden'); toast('InvoiceSnap installed', 'success'); });
+$('#installBtn').addEventListener('click', async () => {
+  if (!deferredInstall) return;
+  deferredInstall.prompt(); await deferredInstall.userChoice; deferredInstall = null; $('#installBtn').classList.add('hidden');
+});
+
+/* ============================== Wiring ============================== */
+document.addEventListener('click', e => {
+  const g = e.target.closest('[data-goto]'); if (g) return showTab(g.dataset.goto);
+  const rm = e.target.closest('[data-remove]');
+  if (rm) { const i = state.queue.findIndex(q => q.id === rm.dataset.remove); if (i > -1) { if (state.queue[i].url) URL.revokeObjectURL(state.queue[i].url); state.queue.splice(i, 1); renderQueue(); } return; }
+  const ed = e.target.closest('[data-edit]'); if (ed) return editClient(ed.dataset.edit);
+  const de = e.target.closest('[data-del]'); if (de) return deleteClient(de.dataset.del);
+  const op = e.target.closest('[data-open]');
+  if (op) { state.drive.stack.push({ id: op.dataset.open, name: op.dataset.name }); state.drive.items = null; return renderDrive(); }
+  const cr = e.target.closest('[data-crumb]');
+  if (cr) { state.drive.stack = state.drive.stack.slice(0, +cr.dataset.crumb + 1); state.drive.items = null; return renderDrive(); }
+});
+
+$('#openSidebar').onclick = openSidebar;
+$('#closeSidebar').onclick = closeSidebar;
+$('#overlay').onclick = closeSidebar;
+
+$('#selClient').onchange = updatePreview;
+['selDay', 'selMonth', 'selYear'].forEach(id => $('#' + id).addEventListener('change', () => {
+  dateSel.d = +$('#selDay').value || 1; dateSel.m = +$('#selMonth').value; dateSel.y = +$('#selYear').value;
+  syncDateSelects();
+  if (state.settings.lockDate) store.set(K.lastDate, Object.assign({}, dateSel));
+}));
+
+$('#btnChoose').onclick = () => $('#fileInput').click();
+$('#btnCamera').onclick = () => $('#cameraInput').click();
+$('#fileInput').onchange = e => { addFiles(e.target.files); e.target.value = ''; };
+$('#cameraInput').onchange = e => { addFiles(e.target.files); e.target.value = ''; };
+$('#btnUpload').onclick = uploadAll;
+$('#btnClearQueue').onclick = () => { if (!state.uploading) clearQueue(); };
+
+const dz = $('#dropZone');
+dz.addEventListener('click', () => $('#fileInput').click());
+dz.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('#fileInput').click(); } });
+['dragenter', 'dragover'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add('drop-active'); }));
+['dragleave', 'drop'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove('drop-active'); }));
+dz.addEventListener('drop', e => { if (e.dataTransfer && e.dataTransfer.files.length) addFiles(e.dataTransfer.files); });
+['dragover', 'drop'].forEach(ev => window.addEventListener(ev, e => { if (!dz.contains(e.target)) e.preventDefault(); }));
+
+window.addEventListener('online', () => { updateStatus(); toast('Back online'); });
+window.addEventListener('offline', () => { updateStatus(); toast('You are offline', 'error'); });
+window.addEventListener('hashchange', () => { const h = location.hash.slice(1); if (h && h !== state.tab) showTab(h); });
+setInterval(() => { if (state.user) updateStatus(); }, 60000);
+
+/* ============================== Boot ============================== */
+buildNav();
+initDate();
+buildDateSelects();
+updateStatus();
+setupPWA();
+showTab(location.hash.slice(1) || 'dashboard');
+</script>
+</body>
+</html>
